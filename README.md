@@ -90,7 +90,11 @@ development files used by maturin `abi3-py310` releases. It exports
 Python 3.10.11 NuGet package on Windows x64. Linux x64 and macOS ARM64 export
 Python Build Standalone CPython 3.10.20 headers, `libpython3*`, `python3`,
 `_sysconfigdata`, and Python config files so non-Windows maturin builds have a
-real ABI payload instead of a manifest-only artifact.
+real ABI payload instead of a manifest-only artifact. The same Python Build
+Standalone payload flow is supported for Windows ARM64, Linux ARM64, Linux x64
+musl, Linux ARM64 musl, and macOS x64. Windows ARM64 uses the stable ABI
+`python3.lib` from Python Build Standalone CPython 3.11.15 because CPython 3.10
+does not provide an official Windows ARM64 development package.
 
 ## Notes
 
