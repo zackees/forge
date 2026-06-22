@@ -38,7 +38,7 @@ def main() -> None:
     args = parser.parse_args()
 
     recipe_ref = f"{args.name}/{args.version}"
-    package_list = run_json(["conan", "list", f"{recipe_ref}:*", "--format=json"])
+    package_list = run_json(["conan", "list", f"{recipe_ref}#*:*#*", "--format=json"])
     package_ref = first_package_ref(package_list, recipe_ref)
     package_path = Path(
         subprocess.run(
