@@ -304,6 +304,33 @@ jobs:
           --version "${{ inputs.version }}"
           --output forge-output/package
 
+      - name: Validate package payload
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import sys
+
+          root = Path("forge-output/package")
+          files = sorted(path for path in root.rglob("*") if path.is_file())
+          total_size = sum(path.stat().st_size for path in files)
+          print(f"Package payload size: {total_size} bytes across {len(files)} files")
+
+          if total_size < 10 * 1024:
+              print(
+                  "::warning title=Small package payload::"
+                  f"forge-output/package is {total_size} bytes, below the 10240 byte minimum"
+              )
+              print("::group::forge-output/package directory scan (first 500 files)")
+              for index, path in enumerate(files[:500], start=1):
+                  relative = path.relative_to(root).as_posix()
+                  print(f"{index:03d} {path.stat().st_size:10d} {relative}")
+              if len(files) > 500:
+                  print(f"... truncated {len(files) - 500} additional files")
+              print("::endgroup::")
+              sys.exit("Package payload is below the 10240 byte minimum")
+          PY
+
       - name: Archive package
         shell: bash
         run: |
