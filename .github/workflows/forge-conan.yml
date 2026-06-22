@@ -1,0 +1,131 @@
+name: Forge Conan package
+
+on:
+  workflow_dispatch:
+    inputs:
+      recipe_repo:
+        description: Git URL or owner/repo containing the Conan recipe
+        required: true
+        type: string
+      recipe_ref:
+        description: Branch, tag, or commit to build
+        required: false
+        default: main
+        type: string
+      recipe_path:
+        description: Path to the recipe directory inside recipe_repo
+        required: false
+        default: .
+        type: string
+      name:
+        description: Conan package name
+        required: true
+        type: string
+      version:
+        description: Conan package version
+        required: true
+        type: string
+      build_type:
+        description: Conan build type
+        required: false
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+          - RelWithDebInfo
+          - MinSizeRel
+
+permissions:
+  contents: read
+
+jobs:
+  forge:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            runner: windows-2022
+            conan_os: Windows
+            conan_arch: x86_64
+          - platform: windows-arm64
+            runner: windows-11-arm
+            conan_os: Windows
+            conan_arch: armv8
+          - platform: linux-x64
+            runner: ubuntu-24.04
+            conan_os: Linux
+            conan_arch: x86_64
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+            conan_os: Linux
+            conan_arch: armv8
+          - platform: macos-x64
+            runner: macos-15-intel
+            conan_os: Macos
+            conan_arch: x86_64
+          - platform: macos-arm64
+            runner: macos-15
+            conan_os: Macos
+            conan_arch: armv8
+
+    steps:
+      - name: Checkout forge
+        uses: actions/checkout@v4
+        with:
+          path: forge
+
+      - name: Checkout recipe
+        shell: bash
+        run: |
+          repo="${{ inputs.recipe_repo }}"
+          if [[ "$repo" != http://* && "$repo" != https://* && "$repo" != git@* ]]; then
+            repo="https://github.com/${repo}.git"
+          fi
+          git clone --depth 1 --branch "${{ inputs.recipe_ref }}" "$repo" recipe
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Conan
+        run: python -m pip install --upgrade pip conan
+
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
+      - name: Build package
+        shell: bash
+        run: |
+          conan create "recipe/${{ inputs.recipe_path }}" \
+            --name "${{ inputs.name }}" \
+            --version "${{ inputs.version }}" \
+            -s os="${{ matrix.conan_os }}" \
+            -s arch="${{ matrix.conan_arch }}" \
+            -s build_type="${{ inputs.build_type }}" \
+            --build=missing
+
+      - name: Export package folder
+        run: >
+          python forge/scripts/export_conan_package.py
+          --name "${{ inputs.name }}"
+          --version "${{ inputs.version }}"
+          --output forge-output/package
+
+      - name: Archive package
+        shell: bash
+        run: |
+          tar -czf "forge-${{ inputs.name }}-${{ inputs.version }}-${{ matrix.platform }}.tar.gz" \
+            -C forge-output .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-${{ inputs.name }}-${{ inputs.version }}-${{ matrix.platform }}
+          path: forge-${{ inputs.name }}-${{ inputs.version }}-${{ matrix.platform }}.tar.gz
+          if-no-files-found: error

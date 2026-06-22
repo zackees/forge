@@ -1,0 +1,6 @@
+.conan2/
+forge-output/
+*.tar.gz
+*.zip
+__pycache__/
+.pytest_cache/
