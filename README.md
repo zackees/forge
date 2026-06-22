@@ -85,10 +85,12 @@ folder to `forge-output/package`, and uploads a gzip level 9 `.tar.gz` archive.
 ## Python ABI 3.10 Smoke Test
 
 The `examples/python-abi310` recipe packages the Python stable ABI 3.10
-development files used by maturin `abi3-py310` Windows releases. It exports
+development files used by maturin `abi3-py310` releases. It exports
 `python3.lib`, `python310.lib`, the matching DLLs, and headers from the official
-Python 3.10.11 NuGet package on Windows x64. Linux and macOS export a manifest
-because abi3 extension builds there do not use a Windows-style import library.
+Python 3.10.11 NuGet package on Windows x64. Linux x64 and macOS ARM64 export
+Python Build Standalone CPython 3.10.20 headers, `libpython3*`, `python3`,
+`_sysconfigdata`, and Python config files so non-Windows maturin builds have a
+real ABI payload instead of a manifest-only artifact.
 
 ## Notes
 
