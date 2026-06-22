@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 from conan import ConanFile
@@ -13,12 +14,6 @@ class Python3SharedConan(ConanFile):
 
     default_options = {
         "cpython/*:shared": True,
-        "cpython/*:with_bz2": False,
-        "cpython/*:with_curses": False,
-        "cpython/*:with_gdbm": False,
-        "cpython/*:with_lzma": False,
-        "cpython/*:with_sqlite3": False,
-        "cpython/*:with_tkinter": False,
         "cpython/*:optimizations": False,
         "cpython/*:lto": False,
     }
@@ -28,16 +23,19 @@ class Python3SharedConan(ConanFile):
 
     def package(self):
         cpython = self.dependencies["cpython"].package_folder
-        copied = []
-        copied += copy(self, "*.dll", src=cpython, dst=self.package_folder, keep_path=True)
-        copied += copy(self, "*.so*", src=cpython, dst=self.package_folder, keep_path=True)
-        copied += copy(self, "*.dylib", src=cpython, dst=self.package_folder, keep_path=True)
-        if not copied:
-            raise RuntimeError(f"No shared libraries found in {cpython}")
+        copy(self, "*", src=cpython, dst=self.package_folder, keep_path=True, excludes=("*.pdb", "*.dSYM/*"))
+
+        package_folder = Path(self.package_folder)
+        libs = list(package_folder.rglob("python*.lib"))
+        if self.settings.os == "Windows" and libs:
+            python3_lib = libs[0].with_name("python3.lib")
+            if not python3_lib.exists():
+                shutil.copy2(libs[0], python3_lib)
+
         save(
             self,
-            Path(self.package_folder) / "manifest.txt",
-            f"Packaged shared libraries from cpython/{self.version}\n",
+            package_folder / "manifest.txt",
+            f"Packaged full Release CPython payload from cpython/{self.version}\n",
         )
 
     def package_info(self):
