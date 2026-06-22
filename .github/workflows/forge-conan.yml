@@ -307,8 +307,8 @@ jobs:
       - name: Archive package
         shell: bash
         run: |
-          tar -czf "forge-${{ inputs.name }}-${{ inputs.version }}-${{ matrix.platform }}.tar.gz" \
-            -C forge-output .
+          tar -cf - -C forge-output . \
+            | gzip -9 > "forge-${{ inputs.name }}-${{ inputs.version }}-${{ matrix.platform }}.tar.gz"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

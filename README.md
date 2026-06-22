@@ -14,7 +14,7 @@ The first workflow is intentionally small:
 - each worker tries to pull a prebuilt package before building locally
 - runs `conan create` only when no matching binary package is available
 - copies the generated Conan package folder into a deterministic artifact folder
-- uploads one compressed artifact per platform
+- uploads one maximum-compression `.tar.gz` artifact per platform
 
 ## Runner Matrix
 
@@ -80,7 +80,14 @@ conan create "$recipe_path" \
 ```
 
 Then it locates the generated package with `conan list`, copies the package
-folder to `forge-output/package`, and uploads a `.tar.gz` archive.
+folder to `forge-output/package`, and uploads a gzip level 9 `.tar.gz` archive.
+
+## Python Shared Library Smoke Test
+
+The `examples/python3-shared` recipe wraps Conan Center `cpython/3.12.7` with
+shared libraries enabled and packages the generated `python*.dll`, `*.so*`, and
+`*.dylib` files. Use it to test the default Windows x64, Linux x64, and macOS
+ARM64 workflow platforms.
 
 ## Notes
 

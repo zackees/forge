@@ -82,7 +82,7 @@ def run(args: list[str], *, env: dict[str, str], check: bool = True) -> subproce
 def tar_directory(source: Path, destination: Path) -> None:
     if destination.exists():
         destination.unlink()
-    with tarfile.open(destination, "w:gz") as archive:
+    with tarfile.open(destination, "w:gz", compresslevel=9) as archive:
         for path in sorted(source.rglob("*")):
             archive.add(path, arcname=path.relative_to(source))
 
