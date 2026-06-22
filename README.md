@@ -82,12 +82,13 @@ conan create "$recipe_path" \
 Then it locates the generated package with `conan list`, copies the package
 folder to `forge-output/package`, and uploads a gzip level 9 `.tar.gz` archive.
 
-## Python Shared Library Smoke Test
+## Python ABI 3.10 Smoke Test
 
-The `examples/python3-shared` recipe wraps Conan Center `cpython/3.12.7` with
-shared libraries enabled and packages the generated `python*.dll`, `*.so*`, and
-`*.dylib` files. Use it to test the default Windows x64, Linux x64, and macOS
-ARM64 workflow platforms.
+The `examples/python-abi310` recipe packages the Python stable ABI 3.10
+development files used by maturin `abi3-py310` Windows releases. It exports
+`python3.lib`, `python310.lib`, the matching DLLs, and headers from the official
+Python 3.10.11 NuGet package on Windows x64. Linux and macOS export a manifest
+because abi3 extension builds there do not use a Windows-style import library.
 
 ## Notes
 
