@@ -1,5 +1,8 @@
 .conan2/
+.conan-master/
+downloaded-artifacts/
 forge-output/
+forge-prebuilt/
 *.tar.gz
 *.zip
 __pycache__/

@@ -1,6 +1,76 @@
 name: Forge Conan package
 
 on:
+  workflow_call:
+    inputs:
+      recipe_repo:
+        description: Git URL or owner/repo containing the Conan recipe
+        required: true
+        type: string
+      recipe_ref:
+        description: Branch, tag, or commit to build
+        required: false
+        default: main
+        type: string
+      recipe_path:
+        description: Path to the recipe directory inside recipe_repo
+        required: false
+        default: .
+        type: string
+      name:
+        description: Conan package name
+        required: true
+        type: string
+      version:
+        description: Conan package version
+        required: true
+        type: string
+      build_type:
+        description: Conan build type
+        required: false
+        default: Release
+        type: string
+      windows_x64:
+        description: Build Windows x64
+        required: false
+        default: true
+        type: boolean
+      windows_arm64:
+        description: Build Windows ARM64
+        required: false
+        default: false
+        type: boolean
+      linux_x64:
+        description: Build Linux x64
+        required: false
+        default: true
+        type: boolean
+      linux_arm64:
+        description: Build Linux ARM64
+        required: false
+        default: false
+        type: boolean
+      linux_x64_musl:
+        description: Build Linux x64 musl
+        required: false
+        default: false
+        type: boolean
+      linux_arm64_musl:
+        description: Build Linux ARM64 musl
+        required: false
+        default: false
+        type: boolean
+      macos_x64:
+        description: Build macOS x64
+        required: false
+        default: false
+        type: boolean
+      macos_arm64:
+        description: Build macOS ARM64
+        required: false
+        default: true
+        type: boolean
+
   workflow_dispatch:
     inputs:
       recipe_repo:
@@ -35,48 +105,122 @@ on:
           - Debug
           - RelWithDebInfo
           - MinSizeRel
+      windows_x64:
+        description: Build Windows x64
+        required: false
+        default: true
+        type: boolean
+      windows_arm64:
+        description: Build Windows ARM64
+        required: false
+        default: false
+        type: boolean
+      linux_x64:
+        description: Build Linux x64
+        required: false
+        default: true
+        type: boolean
+      linux_arm64:
+        description: Build Linux ARM64
+        required: false
+        default: false
+        type: boolean
+      linux_x64_musl:
+        description: Build Linux x64 musl
+        required: false
+        default: false
+        type: boolean
+      linux_arm64_musl:
+        description: Build Linux ARM64 musl
+        required: false
+        default: false
+        type: boolean
+      macos_x64:
+        description: Build macOS x64
+        required: false
+        default: false
+        type: boolean
+      macos_arm64:
+        description: Build macOS ARM64
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
 
 jobs:
+  master:
+    name: Pull prebuilt packages and plan workers
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.master.outputs.matrix }}
+      has_builds: ${{ steps.master.outputs.has_builds }}
+    steps:
+      - name: Checkout forge
+        uses: actions/checkout@v4
+        with:
+          repository: zackees/forge
+          path: forge
+
+      - name: Checkout recipe
+        shell: bash
+        run: |
+          repo="${{ inputs.recipe_repo }}"
+          if [[ "$repo" != http://* && "$repo" != https://* && "$repo" != git@* ]]; then
+            repo="https://github.com/${repo}.git"
+          fi
+          git clone --depth 1 --branch "${{ inputs.recipe_ref }}" "$repo" recipe
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Conan
+        run: python -m pip install --upgrade pip conan
+
+      - name: Pull prebuilt packages
+        id: master
+        shell: bash
+        env:
+          WINDOWS_X64: ${{ inputs.windows_x64 }}
+          WINDOWS_ARM64: ${{ inputs.windows_arm64 }}
+          LINUX_X64: ${{ inputs.linux_x64 }}
+          LINUX_ARM64: ${{ inputs.linux_arm64 }}
+          LINUX_X64_MUSL: ${{ inputs.linux_x64_musl }}
+          LINUX_ARM64_MUSL: ${{ inputs.linux_arm64_musl }}
+          MACOS_X64: ${{ inputs.macos_x64 }}
+          MACOS_ARM64: ${{ inputs.macos_arm64 }}
+        run: |
+          python forge/scripts/master_pull.py \
+            --name "${{ inputs.name }}" \
+            --version "${{ inputs.version }}" \
+            --recipe-path "recipe/${{ inputs.recipe_path }}" \
+            --build-type "${{ inputs.build_type }}"
+
+      - name: Upload prebuilt artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-prebuilt-packages
+          path: forge-prebuilt/*.tar.gz
+          if-no-files-found: ignore
+
   forge:
     name: ${{ matrix.platform }}
+    needs: master
+    if: ${{ needs.master.outputs.has_builds == 'true' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: windows-x64
-            runner: windows-2022
-            conan_os: Windows
-            conan_arch: x86_64
-          - platform: windows-arm64
-            runner: windows-11-arm
-            conan_os: Windows
-            conan_arch: armv8
-          - platform: linux-x64
-            runner: ubuntu-24.04
-            conan_os: Linux
-            conan_arch: x86_64
-          - platform: linux-arm64
-            runner: ubuntu-24.04-arm
-            conan_os: Linux
-            conan_arch: armv8
-          - platform: macos-x64
-            runner: macos-15-intel
-            conan_os: Macos
-            conan_arch: x86_64
-          - platform: macos-arm64
-            runner: macos-15
-            conan_os: Macos
-            conan_arch: armv8
+      matrix: ${{ fromJson(needs.master.outputs.matrix) }}
 
     steps:
       - name: Checkout forge
         uses: actions/checkout@v4
         with:
+          repository: zackees/forge
           path: forge
 
       - name: Checkout recipe
@@ -99,16 +243,59 @@ jobs:
       - name: Detect Conan profile
         run: conan profile detect --force
 
-      - name: Build package
+      - name: Install musl tools
+        if: ${{ matrix.libc == 'musl' }}
         shell: bash
         run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Export recipe
+        run: >
+          conan export "recipe/${{ inputs.recipe_path }}"
+          --name "${{ inputs.name }}"
+          --version "${{ inputs.version }}"
+
+      - name: Pull prebuilt package
+        id: pull
+        shell: bash
+        run: |
+          extra_args=()
+          if [[ "${{ matrix.libc }}" == "musl" ]]; then
+            extra_args+=("-c" "tools.build:compiler_executables={'c':'musl-gcc'}")
+            extra_args+=("-c" "tools.gnu:host_triplet=${{ matrix.host_triplet }}")
+          fi
+
+          if conan install \
+            --requires "${{ inputs.name }}/${{ inputs.version }}" \
+            -s os="${{ matrix.conan_os }}" \
+            -s arch="${{ matrix.conan_arch }}" \
+            -s build_type="${{ inputs.build_type }}" \
+            --build=never \
+            "${extra_args[@]}"; then
+            echo "package_ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "package_ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build package
+        if: ${{ steps.pull.outputs.package_ready != 'true' }}
+        shell: bash
+        run: |
+          extra_args=()
+          if [[ "${{ matrix.libc }}" == "musl" ]]; then
+            extra_args+=("-c" "tools.build:compiler_executables={'c':'musl-gcc'}")
+            extra_args+=("-c" "tools.gnu:host_triplet=${{ matrix.host_triplet }}")
+          fi
+
           conan create "recipe/${{ inputs.recipe_path }}" \
             --name "${{ inputs.name }}" \
             --version "${{ inputs.version }}" \
             -s os="${{ matrix.conan_os }}" \
             -s arch="${{ matrix.conan_arch }}" \
             -s build_type="${{ inputs.build_type }}" \
-            --build=missing
+            --build=missing \
+            "${extra_args[@]}"
 
       - name: Export package folder
         run: >
