@@ -52,7 +52,16 @@ def main() -> None:
     output = Path(args.output)
     if output.exists():
         shutil.rmtree(output)
-    shutil.copytree(package_path, output)
+    # Preserve symlinks rather than dereferencing. Recipes that
+    # vendor system trees (Apple SDKs, framework Resources/, etc.)
+    # routinely ship recursive symlinks — e.g. the macOS SDK ships
+    # a Ruby framework whose Headers/ directory contains a `ruby`
+    # symlink that loops back on itself. Dereferencing those hits
+    # "[Errno 62] Too many levels of symbolic links" and aborts the
+    # entire artifact export. With symlinks=True the link is copied
+    # verbatim and consumers can follow it (or not) at their own
+    # discretion.
+    shutil.copytree(package_path, output, symlinks=True)
 
     manifest = output.parent / "manifest.json"
     manifest.write_text(
