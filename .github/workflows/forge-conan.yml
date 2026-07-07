@@ -35,6 +35,11 @@ on:
         required: false
         default: true
         type: boolean
+      windows_x64_gnu:
+        description: Build Windows x64 GNU
+        required: false
+        default: false
+        type: boolean
       windows_arm64:
         description: Build Windows ARM64
         required: false
@@ -110,6 +115,11 @@ on:
         required: false
         default: true
         type: boolean
+      windows_x64_gnu:
+        description: Build Windows x64 GNU
+        required: false
+        default: false
+        type: boolean
       windows_arm64:
         description: Build Windows ARM64
         required: false
@@ -178,13 +188,14 @@ jobs:
           python-version: "3.12"
 
       - name: Install Conan
-        run: python -m pip install --upgrade pip conan
+        run: python -m pip install --upgrade pip conan zstandard
 
       - name: Pull prebuilt packages
         id: master
         shell: bash
         env:
           WINDOWS_X64: ${{ inputs.windows_x64 }}
+          WINDOWS_X64_GNU: ${{ inputs.windows_x64_gnu }}
           WINDOWS_ARM64: ${{ inputs.windows_arm64 }}
           LINUX_X64: ${{ inputs.linux_x64 }}
           LINUX_ARM64: ${{ inputs.linux_arm64 }}
@@ -238,7 +249,13 @@ jobs:
           python-version: "3.12"
 
       - name: Install Conan
-        run: python -m pip install --upgrade pip conan
+        run: python -m pip install --upgrade pip conan zstandard
+
+      - name: Install managed MinGW-w64 GCC
+        if: ${{ matrix.mingw == true }}
+        run: >
+          python forge/scripts/install_soldr_mingw.py
+          --target-dir "${{ runner.temp }}/soldr-mingw"
 
       - name: Detect Conan profile
         run: conan profile detect --force
@@ -265,6 +282,9 @@ jobs:
             extra_args+=("-c" "tools.build:compiler_executables={'c':'musl-gcc'}")
             extra_args+=("-c" "tools.gnu:host_triplet=${{ matrix.host_triplet }}")
           fi
+          if [[ "${{ matrix.mingw }}" == "true" ]]; then
+            extra_args+=("-c" "tools.build:compiler_executables={'c':'gcc','cpp':'g++'}")
+          fi
 
           if conan install \
             --requires "${{ inputs.name }}/${{ inputs.version }}" \
@@ -286,6 +306,9 @@ jobs:
           if [[ "${{ matrix.libc }}" == "musl" ]]; then
             extra_args+=("-c" "tools.build:compiler_executables={'c':'musl-gcc'}")
             extra_args+=("-c" "tools.gnu:host_triplet=${{ matrix.host_triplet }}")
+          fi
+          if [[ "${{ matrix.mingw }}" == "true" ]]; then
+            extra_args+=("-c" "tools.build:compiler_executables={'c':'gcc','cpp':'g++'}")
           fi
 
           conan create "recipe/${{ inputs.recipe_path }}" \

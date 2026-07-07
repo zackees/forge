@@ -7,6 +7,8 @@ The first workflow is intentionally small:
 
 - manual `workflow_dispatch` trigger and reusable `workflow_call` trigger
 - native matrix for Windows, Linux, and macOS on x64 and ARM64
+- GNU ABI Windows x64 builds through the soldr-toolchain managed
+  MinGW-w64 GCC bundle
 - optional Linux musl targets for x64 and ARM64
 - checks out a recipe repository at a requested ref
 - has a master job try to pull prebuilt packages first
@@ -21,6 +23,7 @@ The first workflow is intentionally small:
 | Platform | Default | Runner label | Conan OS | Conan arch |
 | --- | --- | --- | --- | --- |
 | Windows x64 | On | `windows-2022` | `Windows` | `x86_64` |
+| Windows x64 GNU | Off | `windows-2022` | `Windows` | `x86_64` |
 | Windows ARM64 | Off | `windows-11-arm` | `Windows` | `armv8` |
 | Linux x64 | On | `ubuntu-24.04` | `Linux` | `x86_64` |
 | Linux ARM64 | Off | `ubuntu-24.04-arm` | `Linux` | `armv8` |

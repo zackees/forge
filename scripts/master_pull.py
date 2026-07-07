@@ -19,6 +19,13 @@ PLATFORMS = [
         "conan_os": "Windows",
         "conan_arch": "x86_64",
     }),
+    ("WINDOWS_X64_GNU", {
+        "platform": "windows-x64-gnu",
+        "runner": "windows-2022",
+        "conan_os": "Windows",
+        "conan_arch": "x86_64",
+        "mingw": True,
+    }),
     ("WINDOWS_ARM64", {
         "platform": "windows-arm64",
         "runner": "windows-11-arm",
