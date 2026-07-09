@@ -284,6 +284,10 @@ jobs:
           fi
           if [[ "${{ matrix.mingw }}" == "true" ]]; then
             extra_args+=("-c" "tools.build:compiler_executables={'c':'gcc','cpp':'g++'}")
+            # GCC 14/15 promote these legacy C diagnostics to hard errors by
+            # default, breaking pre-C23 autotools deps (e.g. libx264's
+            # _beginthreadex implicit declaration). Relax them to warnings.
+            extra_args+=("-c" "tools.build:cflags=['-Wno-error=implicit-function-declaration','-Wno-error=implicit-int','-Wno-error=incompatible-pointer-types','-Wno-error=int-conversion']")
           fi
 
           if conan install \
@@ -309,6 +313,10 @@ jobs:
           fi
           if [[ "${{ matrix.mingw }}" == "true" ]]; then
             extra_args+=("-c" "tools.build:compiler_executables={'c':'gcc','cpp':'g++'}")
+            # GCC 14/15 promote these legacy C diagnostics to hard errors by
+            # default, breaking pre-C23 autotools deps (e.g. libx264's
+            # _beginthreadex implicit declaration). Relax them to warnings.
+            extra_args+=("-c" "tools.build:cflags=['-Wno-error=implicit-function-declaration','-Wno-error=implicit-int','-Wno-error=incompatible-pointer-types','-Wno-error=int-conversion']")
           fi
 
           conan create "recipe/${{ inputs.recipe_path }}" \
