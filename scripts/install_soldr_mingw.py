@@ -111,13 +111,22 @@ def main() -> int:
     if make_program.is_file():
         tools["CMAKE_MAKE_PROGRAM"] = make_program
 
-    append_line(args.github_path, str(bin_dir))
-    append_line(args.github_env, f"MINGW_W64_GCC_ROOT={package_root}")
-    append_line(args.github_env, f"MINGW_W64_GCC_BIN={bin_dir}")
+    # Emit forward-slash paths. These env vars (AR/CC/CXX/...) are consumed by
+    # recipe builds that run under msys2 bash (autotools/libtool), where a
+    # Windows backslash path like `D:\a\_temp\...\ar.exe` gets its backslashes
+    # eaten by the shell -> `D:a_temp...ar.exe: command not found`. Forward
+    # slashes (`D:/a/_temp/.../ar.exe`) are accepted by both Windows tools and
+    # msys2/bash, so they survive the round-trip. CMake also accepts them.
+    def _posix(value: Path) -> str:
+        return value.as_posix()
+
+    append_line(args.github_path, _posix(bin_dir))
+    append_line(args.github_env, f"MINGW_W64_GCC_ROOT={_posix(package_root)}")
+    append_line(args.github_env, f"MINGW_W64_GCC_BIN={_posix(bin_dir)}")
     append_line(args.github_env, f"FORGE_TARGET_TRIPLE={TARGET}")
     append_line(args.github_env, "CMAKE_GENERATOR=MinGW Makefiles")
     for key, value in tools.items():
-        append_line(args.github_env, f"{key}={value}")
+        append_line(args.github_env, f"{key}={_posix(value)}")
 
     print(f"installed {TOOL} {VERSION} for {TARGET} at {package_root}")
     print(f"verified sha256={actual}")
