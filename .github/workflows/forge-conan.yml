@@ -288,6 +288,10 @@ jobs:
             # default, breaking pre-C23 autotools deps (e.g. libx264's
             # _beginthreadex implicit declaration). Relax them to warnings.
             extra_args+=("-c" "tools.build:cflags=['-Wno-error=implicit-function-declaration','-Wno-error=implicit-int','-Wno-error=incompatible-pointer-types','-Wno-error=int-conversion']")
+            # Statically link the MinGW runtime so produced executables are
+            # self-contained (no libgcc_s / libstdc++-6 / libwinpthread-1 DLL
+            # dependencies on end-user machines).
+            extra_args+=("-c" "tools.build:exelinkflags=['-static','-static-libgcc','-static-libstdc++']")
           fi
 
           if conan install \
@@ -317,6 +321,10 @@ jobs:
             # default, breaking pre-C23 autotools deps (e.g. libx264's
             # _beginthreadex implicit declaration). Relax them to warnings.
             extra_args+=("-c" "tools.build:cflags=['-Wno-error=implicit-function-declaration','-Wno-error=implicit-int','-Wno-error=incompatible-pointer-types','-Wno-error=int-conversion']")
+            # Statically link the MinGW runtime so produced executables are
+            # self-contained (no libgcc_s / libstdc++-6 / libwinpthread-1 DLL
+            # dependencies on end-user machines).
+            extra_args+=("-c" "tools.build:exelinkflags=['-static','-static-libgcc','-static-libstdc++']")
           fi
 
           conan create "recipe/${{ inputs.recipe_path }}" \
