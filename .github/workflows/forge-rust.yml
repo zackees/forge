@@ -73,20 +73,24 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - name: Install musl linker
+        if: matrix.libc == 'musl'
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools
       - name: Build exact binary
         shell: bash
         working-directory: source
         run: |
           set -euo pipefail
           cargo build --locked --release --target "${{ matrix.target }}" --bin "${{ inputs.binary }}"
-          mkdir -p package
-          cp "target/${{ matrix.target }}/release/${{ inputs.binary }}${{ matrix.exe_suffix }}" "package/${{ inputs.binary }}${{ matrix.exe_suffix }}"
+          mkdir -p "${GITHUB_WORKSPACE}/package"
+          cp "target/${{ matrix.target }}/release/${{ inputs.binary }}${{ matrix.exe_suffix }}" "${GITHUB_WORKSPACE}/package/${{ inputs.binary }}${{ matrix.exe_suffix }}"
       - name: Native smoke and manifest
         shell: bash
         run: |
           set -euo pipefail
           package/${{ inputs.binary }}${{ matrix.exe_suffix }} --version
-          python3 scripts/forge_rust.py --tool "${{ inputs.tool }}" --version "${{ inputs.version }}" --binary "${{ inputs.binary }}" --target "${{ matrix.target }}" --source-repo "${{ inputs.source_repo }}" --source-ref "${{ inputs.source_ref }}" --output package
+          python3 scripts/forge_rust.py --tool "${{ inputs.tool }}" --version "${{ inputs.version }}" --binary "${{ inputs.binary }}" --target "${{ matrix.target }}" --platform "${{ matrix.platform }}" --source-repo "${{ inputs.source_repo }}" --source-ref "${{ inputs.source_ref }}" --output package
       - uses: actions/upload-artifact@v4
         with:
           name: forge-rust-${{ inputs.tool }}-${{ inputs.version }}-${{ matrix.platform }}
