@@ -17,3 +17,11 @@ def test_matrix_has_all_native_targets():
 
 def test_matrix_selection_is_explicit():
     assert [row["platform"] for row in matrix({"linux-x64-musl"})] == ["linux-x64-musl"]
+
+
+def test_glibc_builds_use_ubuntu_22_04_compatibility_floor():
+    glibc_rows = [row for row in ROWS if row["libc"] == "glibc"]
+    assert {row["runner"] for row in glibc_rows} == {
+        "ubuntu-22.04",
+        "ubuntu-22.04-arm",
+    }
