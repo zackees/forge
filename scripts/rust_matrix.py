@@ -8,7 +8,9 @@ import json
 ROWS = (
     {
         "platform": "linux-x64-gnu",
-        "runner": "ubuntu-24.04",
+        # Build against glibc 2.35 so the published binary also runs on
+        # Debian 12 (glibc 2.36) and other supported older distributions.
+        "runner": "ubuntu-22.04",
         "target": "x86_64-unknown-linux-gnu",
         "archive_suffix": ".tar.gz",
         "exe_suffix": "",
@@ -17,7 +19,7 @@ ROWS = (
     },
     {
         "platform": "linux-arm64-gnu",
-        "runner": "ubuntu-24.04-arm",
+        "runner": "ubuntu-22.04-arm",
         "target": "aarch64-unknown-linux-gnu",
         "archive_suffix": ".tar.gz",
         "exe_suffix": "",
