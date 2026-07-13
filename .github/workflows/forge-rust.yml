@@ -1,0 +1,93 @@
+name: Forge Rust binary
+
+on:
+  workflow_call:
+    inputs:
+      source_repo: {required: true, type: string}
+      source_ref: {required: true, type: string}
+      tool: {required: true, type: string}
+      binary: {required: true, type: string}
+      version: {required: true, type: string}
+      linux_x64: {required: false, default: true, type: boolean}
+      linux_arm64: {required: false, default: true, type: boolean}
+      linux_x64_musl: {required: false, default: true, type: boolean}
+      linux_arm64_musl: {required: false, default: true, type: boolean}
+      macos_x64: {required: false, default: true, type: boolean}
+      macos_arm64: {required: false, default: true, type: boolean}
+      windows_x64: {required: false, default: true, type: boolean}
+      windows_arm64: {required: false, default: true, type: boolean}
+  workflow_dispatch:
+    inputs:
+      source_repo: {required: true, type: string}
+      source_ref: {required: true, type: string}
+      tool: {required: true, type: string}
+      binary: {required: true, type: string}
+      version: {required: true, type: string}
+      linux_x64: {required: false, default: true, type: boolean}
+      linux_arm64: {required: false, default: true, type: boolean}
+      linux_x64_musl: {required: false, default: true, type: boolean}
+      linux_arm64_musl: {required: false, default: true, type: boolean}
+      macos_x64: {required: false, default: true, type: boolean}
+      macos_arm64: {required: false, default: true, type: boolean}
+      windows_x64: {required: false, default: true, type: boolean}
+      windows_arm64: {required: false, default: true, type: boolean}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: matrix
+        env:
+          ENABLED: >-
+            ${{ inputs.linux_x64 && 'linux-x64-gnu,' || '' }}${{ inputs.linux_arm64 && 'linux-arm64-gnu,' || '' }}${{ inputs.linux_x64_musl && 'linux-x64-musl,' || '' }}${{ inputs.linux_arm64_musl && 'linux-arm64-musl,' || '' }}${{ inputs.macos_x64 && 'macos-x64,' || '' }}${{ inputs.macos_arm64 && 'macos-arm64,' || '' }}${{ inputs.windows_x64 && 'windows-x64-msvc,' || '' }}${{ inputs.windows_arm64 && 'windows-arm64-msvc,' || '' }}
+        run: |
+          test "${{ inputs.source_ref }}" != latest
+          test "${{ inputs.version }}" != latest
+          test -n "${{ inputs.binary }}"
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, sys
+          sys.path.insert(0, 'scripts')
+          from rust_matrix import matrix
+          names = {v for v in os.environ['ENABLED'].split(',') if v}
+          print('matrix=' + json.dumps({'include': matrix(names)}, separators=(',', ':')))
+          PY
+  build:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.validate.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source_repo }}
+          ref: ${{ inputs.source_ref }}
+          path: source
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build exact binary
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --target "${{ matrix.target }}" --bin "${{ inputs.binary }}"
+          mkdir -p package
+          cp "target/${{ matrix.target }}/release/${{ inputs.binary }}${{ matrix.exe_suffix }}" "package/${{ inputs.binary }}${{ matrix.exe_suffix }}"
+      - name: Native smoke and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          package/${{ inputs.binary }}${{ matrix.exe_suffix }} --version
+          python3 scripts/forge_rust.py --tool "${{ inputs.tool }}" --version "${{ inputs.version }}" --binary "${{ inputs.binary }}" --target "${{ matrix.target }}" --source-repo "${{ inputs.source_repo }}" --source-ref "${{ inputs.source_ref }}" --output package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forge-rust-${{ inputs.tool }}-${{ inputs.version }}-${{ matrix.platform }}
+          path: package
