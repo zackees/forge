@@ -41,6 +41,7 @@ def test_manifest_records_ingest_contract(tmp_path, monkeypatch):
     assert manifest["version"] == "0.9.140"
     assert manifest["platform"] == "linux-x64-musl"
     assert manifest["payload_sha256"] == hashlib.sha256(payload).hexdigest()
+    assert manifest["resolution_mode"] == "source-build"
     assert manifest["smoke"]["result"] == "passed"
 
 

@@ -45,8 +45,11 @@ def main() -> int:
     parser.add_argument("--source-repo", required=True)
     parser.add_argument("--source-ref", required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--catalogue-hit", action="store_true")
-    parser.add_argument("--direct-upstream", action="store_true")
+    parser.add_argument(
+        "--resolution-mode",
+        choices=("catalogue", "cargo-binstall", "direct-upstream", "source-build"),
+        default="source-build",
+    )
     args = parser.parse_args()
     if (
         args.version.lower() in {"latest", "*"}
@@ -61,11 +64,6 @@ def main() -> int:
     if not binary_path.is_file():
         raise SystemExit(f"built binary is missing: {binary_path}")
     payload_sha256 = hashlib.sha256(binary_path.read_bytes()).hexdigest()
-    mode = choose_mode(
-        catalogue=args.catalogue_hit,
-        accelerator=args.tool != "cargo-binstall",
-        direct=args.direct_upstream,
-    )
     manifest = {
         "schema_version": 1,
         "tool": args.tool,
@@ -76,7 +74,7 @@ def main() -> int:
         "payload_sha256": payload_sha256,
         "source_repo": args.source_repo,
         "source_ref": args.source_ref,
-        "resolution_mode": mode,
+        "resolution_mode": args.resolution_mode,
         "quick_install": False,
         "telemetry": False,
         "smoke": {"command": f"{binary_name} --version", "result": "passed"},
