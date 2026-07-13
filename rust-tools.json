@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "tools": {
+    "cargo-binstall": {"version": "1.20.1", "binary": "cargo-binstall", "source": "cargo-bins/cargo-binstall"},
+    "cargo-nextest": {"version": "0.9.140", "binary": "cargo-nextest", "source": "nextest-rs/nextest"}
+  }
+}
