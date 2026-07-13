@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "tools": {
-    "cargo-binstall": {"version": "1.20.1", "binary": "cargo-binstall", "source": "cargo-bins/cargo-binstall"},
-    "cargo-nextest": {"version": "0.9.140", "binary": "cargo-nextest", "source": "nextest-rs/nextest"}
+    "cargo-binstall": {"version": "1.20.1", "binary": "cargo-binstall", "source": "cargo-bins/cargo-binstall", "source_ref": "732870f031d2fb36309d0deaf36abcc704a7be65"},
+    "cargo-nextest": {"version": "0.9.140", "binary": "cargo-nextest", "source": "nextest-rs/nextest", "source_ref": "a9fef2964e34f64ed4fceeee7c0c3559ce560920"}
   }
 }

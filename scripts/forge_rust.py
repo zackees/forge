@@ -57,6 +57,23 @@ def main() -> int:
         or len(args.binary.strip()) == 0
     ):
         raise SystemExit("exact version, immutable source ref, and binary are required")
+    managed_path = Path(__file__).resolve().parents[1] / "rust-tools.json"
+    managed = json.loads(managed_path.read_text(encoding="utf-8"))["tools"].get(
+        args.tool
+    )
+    if managed is not None:
+        actual = {
+            "version": args.version,
+            "binary": args.binary,
+            "source": args.source_repo,
+            "source_ref": args.source_ref,
+        }
+        for field, expected in managed.items():
+            if actual.get(field) != expected:
+                raise SystemExit(
+                    f"managed {args.tool} {field}={actual.get(field)!r}, "
+                    f"expected {expected!r}"
+                )
     binary_name = args.binary + (
         ".exe" if args.target.endswith("-windows-msvc") else ""
     )

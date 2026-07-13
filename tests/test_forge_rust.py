@@ -72,3 +72,33 @@ def test_manifest_refuses_missing_binary(tmp_path, monkeypatch):
 
     with pytest.raises(SystemExit, match="built binary is missing"):
         forge_rust.main()
+
+
+def test_managed_tool_ref_must_match_pinned_tag_commit(tmp_path, monkeypatch):
+    (tmp_path / "cargo-nextest").write_bytes(b"binary")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "forge_rust.py",
+            "--tool",
+            "cargo-nextest",
+            "--version",
+            "0.9.140",
+            "--binary",
+            "cargo-nextest",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+            "--platform",
+            "linux-x64-gnu",
+            "--source-repo",
+            "nextest-rs/nextest",
+            "--source-ref",
+            "0" * 40,
+            "--output",
+            str(tmp_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="source_ref"):
+        forge_rust.main()
