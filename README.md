@@ -31,10 +31,24 @@ carefully everything else was built. The floor of the whole chain is the
 **highest** floor of any artifact in it, so a single recipe that ignores this
 defeats the rest.
 
-**The current default does not satisfy this.** `ubuntu-24.04` ships glibc 2.39,
-so recipes built on the bare runner inherit 2.39. Linux `-gnu` builds must run
-inside a glibc-2.17 environment — a `manylinux2014`-lineage container is the
-standard way — rather than directly on the runner label in the matrix below.
+The floor is set by the **sysroot the compile links against**, not by the
+runner label. Chasing it with older runner images tops out at whatever the
+oldest available image ships (`ubuntu-22.04` → 2.35) and drifts upward every
+time a label is retired. A `manylinux2014` container is 2.17 and stays 2.17.
+
+### Rust producer — implemented
+
+`forge-rust.yml` builds the two `-gnu` lanes inside `manylinux2014`
+(`scripts/rust_matrix.py`, the `container` field) and then **measures** the
+result with `readelf -V`, failing the job if anything imports a symbol above
+`GLIBC_FLOOR`. Only the compile is containerised: `actions/checkout` runs on
+the host because its Node 20 runtime cannot start under glibc 2.17.
+
+### Conan recipes — still required
+
+`forge-conan.yml` builds on the bare runner, so its Linux `-gnu` lanes
+currently inherit `ubuntu-24.04`'s glibc 2.39. They must move into a
+2.17 environment the same way.
 
 Notes:
 
