@@ -5,12 +5,25 @@ from __future__ import annotations
 import argparse
 import json
 
+# Every Linux -gnu binary Forge publishes must run on glibc 2.17 (RHEL 7 and
+# newer, which covers RHEL 8 / Debian 10 at 2.28). The runner's own glibc is
+# irrelevant to that: the floor comes from the sysroot the compile links
+# against, so the -gnu lanes build inside a manylinux2014 container while the
+# job itself stays on a modern runner.
+#
+# The container is applied to the *build step*, not the job. A job-level
+# `container:` would make actions/checkout fail — its Node 20 runtime needs
+# glibc 2.28 and manylinux2014 is 2.17 — so checkout and packaging run on the
+# host and only the compile is containerised.
+GLIBC_FLOOR = "2.17"
+MANYLINUX_X64 = "quay.io/pypa/manylinux2014_x86_64"
+MANYLINUX_ARM64 = "quay.io/pypa/manylinux2014_aarch64"
+
 ROWS = (
     {
         "platform": "linux-x64-gnu",
-        # Build against glibc 2.35 so the published binary also runs on
-        # Debian 12 (glibc 2.36) and other supported older distributions.
-        "runner": "ubuntu-22.04",
+        "runner": "ubuntu-24.04",
+        "container": MANYLINUX_X64,
         "target": "x86_64-unknown-linux-gnu",
         "archive_suffix": ".tar.gz",
         "exe_suffix": "",
@@ -19,7 +32,8 @@ ROWS = (
     },
     {
         "platform": "linux-arm64-gnu",
-        "runner": "ubuntu-22.04-arm",
+        "runner": "ubuntu-24.04-arm",
+        "container": MANYLINUX_ARM64,
         "target": "aarch64-unknown-linux-gnu",
         "archive_suffix": ".tar.gz",
         "exe_suffix": "",
@@ -89,6 +103,10 @@ def matrix(enabled: set[str] | None = None) -> list[dict[str, str]]:
     ]
     if not selected:
         raise ValueError("at least one Rust platform must be enabled")
+    # Every row carries the key so `${{ matrix.container }}` is always defined;
+    # empty means "build directly on the runner".
+    for row in selected:
+        row.setdefault("container", "")
     return selected
 
 
