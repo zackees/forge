@@ -18,19 +18,52 @@ The first workflow is intentionally small:
 - copies the generated Conan package folder into a deterministic artifact folder
 - uploads one maximum-compression `.tar.gz` artifact per platform
 
+## Linux glibc floor: 2.17, always
+
+**Every Linux `-gnu` recipe MUST build against glibc 2.17.** This is a hard
+requirement, not a preference, and it applies to all future recipes.
+
+Forge output feeds `zackees/soldr-toolchain`, which feeds the `zackees/soldr`
+release archive. A recipe built on a modern runner links against that runner's
+glibc, and that floor then propagates all the way to end users: an archive
+bundling one 2.39 binary does not run on RHEL 8 or Debian 10, no matter how
+carefully everything else was built. The floor of the whole chain is the
+**highest** floor of any artifact in it, so a single recipe that ignores this
+defeats the rest.
+
+**The current default does not satisfy this.** `ubuntu-24.04` ships glibc 2.39,
+so recipes built on the bare runner inherit 2.39. Linux `-gnu` builds must run
+inside a glibc-2.17 environment — a `manylinux2014`-lineage container is the
+standard way — rather than directly on the runner label in the matrix below.
+
+Notes:
+
+- **musl targets are exempt.** They are statically linked; there is no glibc to
+  floor.
+- **Do not reach for zig or `cargo-zigbuild`.** Both are being purged across
+  these repos in favour of the blessed toolchain. Getting to 2.17 here is a
+  matter of *building in an old sysroot*, which is toolchain-agnostic and needs
+  no zig involvement.
+- **Verify, do not assume.** `readelf -V <binary> | grep -o 'GLIBC_[0-9.]*' |
+  sort -Vu | tail -1` reports the real floor. A recipe is only compliant when
+  that prints `GLIBC_2.17` or lower.
+
 ## Runner Matrix
 
-| Platform | Default | Runner label | Conan OS | Conan arch |
-| --- | --- | --- | --- | --- |
-| Windows x64 | On | `windows-2022` | `Windows` | `x86_64` |
-| Windows x64 GNU | Off | `windows-2022` | `Windows` | `x86_64` |
-| Windows ARM64 | Off | `windows-11-arm` | `Windows` | `armv8` |
-| Linux x64 | On | `ubuntu-24.04` | `Linux` | `x86_64` |
-| Linux ARM64 | Off | `ubuntu-24.04-arm` | `Linux` | `armv8` |
-| Linux x64 musl | Off | `ubuntu-24.04` | `Linux` | `x86_64` |
-| Linux ARM64 musl | Off | `ubuntu-24.04-arm` | `Linux` | `armv8` |
-| macOS x64 | Off | `macos-15-intel` | `Macos` | `x86_64` |
-| macOS ARM64 | On | `macos-15` | `Macos` | `armv8` |
+The runner label is where the job is *scheduled*. For Linux `-gnu` it is not
+where the build should ultimately link — see the glibc floor requirement above.
+
+| Platform | Default | Runner label | Conan OS | Conan arch | glibc floor |
+| --- | --- | --- | --- | --- | --- |
+| Windows x64 | On | `windows-2022` | `Windows` | `x86_64` | n/a |
+| Windows x64 GNU | Off | `windows-2022` | `Windows` | `x86_64` | n/a |
+| Windows ARM64 | Off | `windows-11-arm` | `Windows` | `armv8` | n/a |
+| Linux x64 | On | `ubuntu-24.04` | `Linux` | `x86_64` | **must be 2.17** |
+| Linux ARM64 | Off | `ubuntu-24.04-arm` | `Linux` | `armv8` | **must be 2.17** |
+| Linux x64 musl | Off | `ubuntu-24.04` | `Linux` | `x86_64` | n/a (static) |
+| Linux ARM64 musl | Off | `ubuntu-24.04-arm` | `Linux` | `armv8` | n/a (static) |
+| macOS x64 | Off | `macos-15-intel` | `Macos` | `x86_64` | n/a |
+| macOS ARM64 | On | `macos-15` | `Macos` | `armv8` | n/a |
 
 ## Usage
 
