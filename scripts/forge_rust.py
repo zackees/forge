@@ -8,6 +8,9 @@ import json
 import subprocess
 from pathlib import Path
 
+from rust_smoke import smoke_args
+from rust_toolchain import require_exact, verify_rustc_version
+
 STATES = (
     "validate",
     "catalogue",
@@ -50,6 +53,15 @@ def main() -> int:
         choices=("catalogue", "cargo-binstall", "direct-upstream", "source-build"),
         default="source-build",
     )
+    parser.add_argument(
+        "--rust-toolchain",
+        help="exact X.Y.Z toolchain the binary was compiled with",
+    )
+    parser.add_argument(
+        "--rustc-version-file",
+        type=Path,
+        help="captured `rustc --version` output; must match --rust-toolchain",
+    )
     args = parser.parse_args()
     if (
         args.version.lower() in {"latest", "*"}
@@ -57,6 +69,16 @@ def main() -> int:
         or len(args.binary.strip()) == 0
     ):
         raise SystemExit("exact version, immutable source ref, and binary are required")
+    toolchain = None
+    rustc_version = None
+    if args.rustc_version_file is not None and args.rust_toolchain is None:
+        raise SystemExit("--rustc-version-file requires --rust-toolchain")
+    if args.rust_toolchain is not None:
+        toolchain = require_exact(args.rust_toolchain)
+        if args.rustc_version_file is not None:
+            rustc_version = verify_rustc_version(
+                args.rustc_version_file.read_text(encoding="utf-8"), toolchain
+            )
     managed_path = Path(__file__).resolve().parents[1] / "rust-tools.json"
     managed = json.loads(managed_path.read_text(encoding="utf-8"))["tools"].get(
         args.tool
@@ -69,6 +91,8 @@ def main() -> int:
             "source_ref": args.source_ref,
         }
         for field, expected in managed.items():
+            if field == "smoke_args":
+                continue
             if actual.get(field) != expected:
                 raise SystemExit(
                     f"managed {args.tool} {field}={actual.get(field)!r}, "
@@ -94,8 +118,15 @@ def main() -> int:
         "resolution_mode": args.resolution_mode,
         "quick_install": False,
         "telemetry": False,
-        "smoke": {"command": f"{binary_name} --version", "result": "passed"},
+        "smoke": {
+            "command": " ".join([binary_name, *smoke_args(args.tool)]),
+            "result": "passed",
+        },
     }
+    if toolchain is not None:
+        manifest["rust_toolchain"] = toolchain
+    if rustc_version is not None:
+        manifest["rustc_version"] = rustc_version
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output / "manifest.json").write_text(
         json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8"
