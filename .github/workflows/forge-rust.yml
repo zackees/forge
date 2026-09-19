@@ -130,6 +130,10 @@ jobs:
                 | sh -s -- -y --profile minimal --default-toolchain "${RUSTUP_TOOLCHAIN}" --target "${{ matrix.target }}"
               . "$CARGO_HOME/env"
               rustc --version | tee /work/rustc-version.txt
+              # The checkout is owned by the runner uid, not container root;
+              # without this, build scripts that query git (cargo-binstall)
+              # fail with "not within a suitable git worktree".
+              git config --global --add safe.directory "*"
               cargo build --locked --release --target "${{ matrix.target }}" --bin "${{ inputs.binary }}"
               cp "target/${{ matrix.target }}/release/${{ inputs.binary }}" /work/package/${{ inputs.binary }}
             '
