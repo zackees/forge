@@ -81,3 +81,26 @@ def test_manifest_refuses_mismatched_compiler(tmp_path, monkeypatch):
     )
     with pytest.raises(SystemExit, match="expected rustc 1.98.1"):
         forge_rust.main()
+
+
+def test_smoke_args_default_and_binstall_override():
+    import rust_smoke
+
+    assert rust_smoke.smoke_args("cargo-nextest") == ["--version"]
+    assert rust_smoke.smoke_args("unregistered-tool") == ["--version"]
+    # cargo-binstall's --version takes a value; -V prints the version.
+    assert rust_smoke.smoke_args("cargo-binstall") == ["-V"]
+
+
+def test_binstall_manifest_records_its_smoke_command(tmp_path, monkeypatch):
+    (tmp_path / "cargo-binstall").write_bytes(b"binary")
+    monkeypatch.setattr(sys, "argv", [
+        "forge_rust.py", "--tool", "cargo-binstall", "--version", "1.20.1",
+        "--binary", "cargo-binstall", "--target", "x86_64-unknown-linux-musl",
+        "--platform", "linux-x64-musl", "--source-repo", "cargo-bins/cargo-binstall",
+        "--source-ref", "732870f031d2fb36309d0deaf36abcc704a7be65",
+        "--output", str(tmp_path),
+    ])
+    assert forge_rust.main() == 0
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    assert manifest["smoke"]["command"] == "cargo-binstall -V"

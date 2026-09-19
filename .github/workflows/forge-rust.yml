@@ -157,7 +157,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          package/${{ inputs.binary }}${{ matrix.exe_suffix }} --version
+          read -r -a smoke_args <<< "$(python3 scripts/rust_smoke.py --tool "${{ inputs.tool }}")"
+          package/${{ inputs.binary }}${{ matrix.exe_suffix }} "${smoke_args[@]}"
           python3 scripts/forge_rust.py --tool "${{ inputs.tool }}" --version "${{ inputs.version }}" --binary "${{ inputs.binary }}" --target "${{ matrix.target }}" --platform "${{ matrix.platform }}" --source-repo "${{ inputs.source_repo }}" --source-ref "${{ inputs.source_ref }}" --rust-toolchain "${{ inputs.rust_toolchain }}" --rustc-version-file rustc-version.txt --output package
       - uses: actions/upload-artifact@v4
         with:

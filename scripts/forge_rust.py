@@ -8,6 +8,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from rust_smoke import smoke_args
 from rust_toolchain import require_exact, verify_rustc_version
 
 STATES = (
@@ -90,6 +91,8 @@ def main() -> int:
             "source_ref": args.source_ref,
         }
         for field, expected in managed.items():
+            if field == "smoke_args":
+                continue
             if actual.get(field) != expected:
                 raise SystemExit(
                     f"managed {args.tool} {field}={actual.get(field)!r}, "
@@ -115,7 +118,10 @@ def main() -> int:
         "resolution_mode": args.resolution_mode,
         "quick_install": False,
         "telemetry": False,
-        "smoke": {"command": f"{binary_name} --version", "result": "passed"},
+        "smoke": {
+            "command": " ".join([binary_name, *smoke_args(args.tool)]),
+            "result": "passed",
+        },
     }
     if toolchain is not None:
         manifest["rust_toolchain"] = toolchain
