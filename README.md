@@ -44,6 +44,17 @@ result with `readelf -V`, failing the job if anything imports a symbol above
 `GLIBC_FLOOR`. Only the compile is containerised: `actions/checkout` runs on
 the host because its Node 20 runtime cannot start under glibc 2.17.
 
+### Rust compiler: pinned, never `stable`
+
+`forge-rust.yml` takes a `rust_toolchain` input (default `1.98.1`, tracking
+`zackees/soldr`'s `rust-toolchain.toml`). It must be an exact `X.Y.Z` release;
+`scripts/rust_toolchain.py` rejects floating channels. The build exports
+`RUSTUP_TOOLCHAIN` so a `rust-toolchain.toml` in the source repository cannot
+override it, captures `rustc --version`, and refuses to write the manifest
+unless the compiler matches. The manifest records `rust_toolchain` and
+`rustc_version`. Bump the default in the workflow and in
+`scripts/rust_toolchain.py` together (a test keeps them in lockstep).
+
 ### Conan recipes — still required
 
 `forge-conan.yml` builds on the bare runner, so its Linux `-gnu` lanes

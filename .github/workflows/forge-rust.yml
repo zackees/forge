@@ -8,6 +8,10 @@ on:
       tool: {required: true, type: string}
       binary: {required: true, type: string}
       version: {required: true, type: string}
+      # Exact rustc release that compiles the published binary. Never a
+      # floating channel: see scripts/rust_toolchain.py. Default tracks
+      # zackees/soldr's rust-toolchain.toml.
+      rust_toolchain: {required: false, default: "1.98.1", type: string}
       linux_x64: {required: false, default: true, type: boolean}
       linux_arm64: {required: false, default: true, type: boolean}
       linux_x64_musl: {required: false, default: true, type: boolean}
@@ -23,6 +27,10 @@ on:
       tool: {required: true, type: string}
       binary: {required: true, type: string}
       version: {required: true, type: string}
+      # Exact rustc release that compiles the published binary. Never a
+      # floating channel: see scripts/rust_toolchain.py. Default tracks
+      # zackees/soldr's rust-toolchain.toml.
+      rust_toolchain: {required: false, default: "1.98.1", type: string}
       linux_x64: {required: false, default: true, type: boolean}
       linux_arm64: {required: false, default: true, type: boolean}
       linux_x64_musl: {required: false, default: true, type: boolean}
@@ -56,6 +64,7 @@ jobs:
           test "${{ inputs.source_ref }}" != latest
           test "${{ inputs.version }}" != latest
           test -n "${{ inputs.binary }}"
+          python3 scripts/rust_toolchain.py check "${{ inputs.rust_toolchain }}"
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os, sys
           sys.path.insert(0, 'scripts')
@@ -65,6 +74,10 @@ jobs:
           PY
   build:
     needs: validate
+    env:
+      # RUSTUP_TOOLCHAIN outranks any rust-toolchain.toml in the source repo,
+      # so the pinned compiler is the one that actually builds the binary.
+      RUSTUP_TOOLCHAIN: ${{ inputs.rust_toolchain }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.validate.outputs.matrix) }}
@@ -76,9 +89,10 @@ jobs:
           repository: ${{ inputs.source_repo }}
           ref: ${{ inputs.source_ref }}
           path: source
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         if: matrix.container == ''
         with:
+          toolchain: ${{ inputs.rust_toolchain }}
           targets: ${{ matrix.target }}
       - name: Install musl linker
         if: matrix.libc == 'musl'
@@ -90,6 +104,7 @@ jobs:
         working-directory: source
         run: |
           set -euo pipefail
+          rustc --version | tee "${GITHUB_WORKSPACE}/rustc-version.txt"
           cargo build --locked --release --target "${{ matrix.target }}" --bin "${{ inputs.binary }}"
           mkdir -p "${GITHUB_WORKSPACE}/package"
           cp "target/${{ matrix.target }}/release/${{ inputs.binary }}${{ matrix.exe_suffix }}" "${GITHUB_WORKSPACE}/package/${{ inputs.binary }}${{ matrix.exe_suffix }}"
@@ -108,11 +123,13 @@ jobs:
             -w /work/source \
             -e CARGO_HOME=/work/.cargo-home \
             -e RUSTUP_HOME=/work/.rustup-home \
+            -e RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN}" \
             "${{ matrix.container }}" \
             bash -euo pipefail -c '
               curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs \
-                | sh -s -- -y --profile minimal --default-toolchain stable --target "${{ matrix.target }}"
+                | sh -s -- -y --profile minimal --default-toolchain "${RUSTUP_TOOLCHAIN}" --target "${{ matrix.target }}"
               . "$CARGO_HOME/env"
+              rustc --version | tee /work/rustc-version.txt
               cargo build --locked --release --target "${{ matrix.target }}" --bin "${{ inputs.binary }}"
               cp "target/${{ matrix.target }}/release/${{ inputs.binary }}" /work/package/${{ inputs.binary }}
             '
@@ -137,7 +154,7 @@ jobs:
         run: |
           set -euo pipefail
           package/${{ inputs.binary }}${{ matrix.exe_suffix }} --version
-          python3 scripts/forge_rust.py --tool "${{ inputs.tool }}" --version "${{ inputs.version }}" --binary "${{ inputs.binary }}" --target "${{ matrix.target }}" --platform "${{ matrix.platform }}" --source-repo "${{ inputs.source_repo }}" --source-ref "${{ inputs.source_ref }}" --output package
+          python3 scripts/forge_rust.py --tool "${{ inputs.tool }}" --version "${{ inputs.version }}" --binary "${{ inputs.binary }}" --target "${{ matrix.target }}" --platform "${{ matrix.platform }}" --source-repo "${{ inputs.source_repo }}" --source-ref "${{ inputs.source_ref }}" --rust-toolchain "${{ inputs.rust_toolchain }}" --rustc-version-file rustc-version.txt --output package
       - uses: actions/upload-artifact@v4
         with:
           name: forge-rust-${{ inputs.tool }}-${{ inputs.version }}-${{ matrix.platform }}
