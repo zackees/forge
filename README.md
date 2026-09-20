@@ -55,6 +55,11 @@ unless the compiler matches. The manifest records `rust_toolchain` and
 `rustc_version`. Bump the default in the workflow and in
 `scripts/rust_toolchain.py` together (a test keeps them in lockstep).
 
+Registered producers live in `rust-tools.json`: cargo-binstall, cargo-chef,
+cargo-nextest, crgx and soldr-maturin. cargo-chef and crgx moved here from the
+soldr-toolchain `rust-cli` Conan recipe, whose Linux `-gnu` lanes build on the
+bare `ubuntu-24.04` runner and therefore link against glibc 2.39.
+
 ### Conan recipes — still required
 
 `forge-conan.yml` builds on the bare runner, so its Linux `-gnu` lanes

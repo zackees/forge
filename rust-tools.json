@@ -2,7 +2,9 @@
   "schema_version": 1,
   "tools": {
     "cargo-binstall": {"version": "1.20.1", "binary": "cargo-binstall", "source": "cargo-bins/cargo-binstall", "source_ref": "732870f031d2fb36309d0deaf36abcc704a7be65", "smoke_args": ["-V"]},
+    "cargo-chef": {"version": "0.1.73", "binary": "cargo-chef", "source": "LukeMathWalker/cargo-chef", "source_ref": "0e6d0f6777dc5770c6097c3ed67700eea313ac85"},
     "cargo-nextest": {"version": "0.9.140", "binary": "cargo-nextest", "source": "nextest-rs/nextest", "source_ref": "a9fef2964e34f64ed4fceeee7c0c3559ce560920"},
+    "crgx": {"version": "0.1.0", "binary": "crgx", "source": "yfedoseev/crgx", "source_ref": "fbf0a69625d461594e66cac412e7716f6c790059"},
     "soldr-maturin": {
       "version": "1.14.1.post1",
       "binary": "maturin",
