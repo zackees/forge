@@ -104,3 +104,17 @@ def test_binstall_manifest_records_its_smoke_command(tmp_path, monkeypatch):
     assert forge_rust.main() == 0
     manifest = json.loads((tmp_path / "manifest.json").read_text())
     assert manifest["smoke"]["command"] == "cargo-binstall -V"
+
+
+def test_registered_tools_carry_exact_pins():
+    managed = json.loads((ROOT / "rust-tools.json").read_text(encoding="utf-8"))["tools"]
+    # cargo-chef and crgx moved off the forge-conan rust-cli recipe (which
+    # links Linux -gnu against the runner's glibc 2.39) onto this producer,
+    # whose -gnu lanes build inside manylinux2014.
+    assert {"cargo-chef", "crgx"} <= set(managed)
+    for name, spec in managed.items():
+        assert spec["version"] and spec["version"] not in {"latest", "*"}, name
+        assert spec["binary"], name
+        assert "/" in spec["source"], name
+        ref = spec["source_ref"]
+        assert len(ref) == 40 and all(c in "0123456789abcdef" for c in ref), name
