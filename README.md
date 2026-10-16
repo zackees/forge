@@ -60,11 +60,50 @@ cargo-nextest, crgx and soldr-maturin. cargo-chef and crgx moved here from the
 soldr-toolchain `rust-cli` Conan recipe, whose Linux `-gnu` lanes build on the
 bare `ubuntu-24.04` runner and therefore link against glibc 2.39.
 
-### Conan recipes — still required
+### Conan recipes — implemented
 
-`forge-conan.yml` builds on the bare runner, so its Linux `-gnu` lanes
-currently inherit `ubuntu-24.04`'s glibc 2.39. They must move into a
-2.17 environment the same way.
+`forge-conan.yml` runs the Linux `-gnu` lanes (`linux_x64`, `linux_arm64`)
+inside a digest-pinned manylinux container (`scripts/master_pull.py`,
+`LINUX_CONTAINERS`; the master job puts the image in each worker's
+`container` matrix field). Conan (pinned by `CONAN_VERSION` in the workflow)
+is installed into the image's CPython 3.12, and `scripts/conan_build.sh` pulls
+or builds the package there. Checkout and `upload-artifact` stay on the host,
+for the same Node 20 reason as above. The master job no longer pulls Linux
+`-gnu` binaries on the host: those lanes always go to a containerised worker,
+so a cached or remote binary is measured like a fresh build. Inside the
+container `conancenter` is used for recipes only (`--recipes-only`): its
+binaries are built against a newer glibc (its `m4` needs `GLIBC_2.34`), so
+every dependency, build tools included, is built from source in the image.
+
+After the build, `scripts/glibc_floor.py` runs `readelf -V` on **every ELF
+file** in the package folder, prints each file's floor, records the package
+floor in `glibc-floor.txt` inside the artifact, and fails the job if any file
+needs a `GLIBC_*` version above the lane's floor.
+
+#### The `glibc_floor` input and exceptions
+
+`glibc_floor` selects the container for the `-gnu` lanes:
+
+| `glibc_floor` | x86_64 image | aarch64 image |
+| --- | --- | --- |
+| `2.17` (default) | `quay.io/pypa/manylinux2014_x86_64@sha256:f6a6f153…f0a5` | `quay.io/pypa/manylinux2014_aarch64@sha256:c10b5d2c…eb17` |
+| `2.28` (exception) | `quay.io/pypa/manylinux_2_28_x86_64@sha256:4131ddd7…a2ae` | `quay.io/pypa/manylinux_2_28_aarch64@sha256:abd1230a…4eb6` |
+
+2.17 is the rule. A caller may pass `glibc_floor: "2.28"` only when the
+upstream project itself cannot build or run against glibc 2.17 (not because a
+2.17 build is slower or needs extra work), and the exception must be recorded
+in the caller's repository next to the call. A 2.28 artifact must never be
+bundled into the `zackees/soldr-toolchain` → `zackees/soldr` chain, whose floor
+is 2.17. Recorded exceptions:
+
+- `obs-rust/obs-studio-libs`, Qt 6 (`qt/6.11.1`, linux_x64): built with
+  `glibc_floor: "2.28"` because Qt 6 does not support a glibc 2.17 sysroot.
+
+`conan_options` passes whitespace-separated Conan options, each as `-o`, to
+every pull and build (for example `qt/*:shared=True qt/*:qtsvg=True`).
+Inside the container Conan may install system packages
+(`tools.system.package_manager:mode=install`) for recipes such as
+`xorg/system` and `opengl/system`.
 
 Notes:
 
@@ -80,20 +119,21 @@ Notes:
 
 ## Runner Matrix
 
-The runner label is where the job is *scheduled*. For Linux `-gnu` it is not
-where the build should ultimately link — see the glibc floor requirement above.
+The runner label is where the job is *scheduled*. For Linux `-gnu` the build
+runs in the container named in the Container column, which is what sets the
+glibc floor — see the requirement above.
 
-| Platform | Default | Runner label | Conan OS | Conan arch | glibc floor |
-| --- | --- | --- | --- | --- | --- |
-| Windows x64 | On | `windows-2022` | `Windows` | `x86_64` | n/a |
-| Windows x64 GNU | Off | `windows-2022` | `Windows` | `x86_64` | n/a |
-| Windows ARM64 | Off | `windows-11-arm` | `Windows` | `armv8` | n/a |
-| Linux x64 | On | `ubuntu-24.04` | `Linux` | `x86_64` | **must be 2.17** |
-| Linux ARM64 | Off | `ubuntu-24.04-arm` | `Linux` | `armv8` | **must be 2.17** |
-| Linux x64 musl | Off | `ubuntu-24.04` | `Linux` | `x86_64` | n/a (static) |
-| Linux ARM64 musl | Off | `ubuntu-24.04-arm` | `Linux` | `armv8` | n/a (static) |
-| macOS x64 | Off | `macos-15-intel` | `Macos` | `x86_64` | n/a |
-| macOS ARM64 | On | `macos-15` | `Macos` | `armv8` | n/a |
+| Platform | Default | Runner label | Container | Conan OS | Conan arch | glibc floor |
+| --- | --- | --- | --- | --- | --- | --- |
+| Windows x64 | On | `windows-2022` | none | `Windows` | `x86_64` | n/a |
+| Windows x64 GNU | Off | `windows-2022` | none | `Windows` | `x86_64` | n/a |
+| Windows ARM64 | Off | `windows-11-arm` | none | `Windows` | `armv8` | n/a |
+| Linux x64 | On | `ubuntu-24.04` | manylinux2014 (2.28: manylinux_2_28) | `Linux` | `x86_64` | 2.17, measured (2.28 by exception) |
+| Linux ARM64 | Off | `ubuntu-24.04-arm` | manylinux2014 (2.28: manylinux_2_28) | `Linux` | `armv8` | 2.17, measured (2.28 by exception) |
+| Linux x64 musl | Off | `ubuntu-24.04` | none | `Linux` | `x86_64` | n/a (static) |
+| Linux ARM64 musl | Off | `ubuntu-24.04-arm` | none | `Linux` | `armv8` | n/a (static) |
+| macOS x64 | Off | `macos-15-intel` | none | `Macos` | `x86_64` | n/a |
+| macOS ARM64 | On | `macos-15` | none | `Macos` | `armv8` | n/a |
 
 ## Usage
 
@@ -105,6 +145,8 @@ Open the **Forge Conan package** workflow and provide:
 - `name`: recipe name
 - `version`: recipe version
 - `build_type`: usually `Release`
+- `glibc_floor`: `2.17` (default) or `2.28` by documented exception
+- `conan_options`: optional Conan options, each passed as `-o`
 - platform booleans, defaulting to Windows x64, Linux x64, and macOS ARM64
 
 Forge can also be called from another workflow:

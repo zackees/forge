@@ -30,6 +30,18 @@ on:
         required: false
         default: Release
         type: string
+      glibc_floor:
+        description: >-
+          glibc floor for Linux -gnu lanes. 2.17 (manylinux2014) is the rule;
+          2.28 (manylinux_2_28) is a documented exception, see README.
+        required: false
+        default: "2.17"
+        type: string
+      conan_options:
+        description: Whitespace-separated Conan options, each passed as -o (e.g. "qt/*:shared=True")
+        required: false
+        default: ""
+        type: string
       windows_x64:
         description: Build Windows x64
         required: false
@@ -110,6 +122,21 @@ on:
           - Debug
           - RelWithDebInfo
           - MinSizeRel
+      glibc_floor:
+        description: >-
+          glibc floor for Linux -gnu lanes. 2.17 (manylinux2014) is the rule;
+          2.28 (manylinux_2_28) is a documented exception, see README.
+        required: false
+        default: "2.17"
+        type: choice
+        options:
+          - "2.17"
+          - "2.28"
+      conan_options:
+        description: Whitespace-separated Conan options, each passed as -o (e.g. "qt/*:shared=True")
+        required: false
+        default: ""
+        type: string
       windows_x64:
         description: Build Windows x64
         required: false
@@ -159,6 +186,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Conan is pinned so host and container lanes resolve recipes identically.
+  CONAN_VERSION: "2.33.0"
+
 jobs:
   master:
     name: Pull prebuilt packages and plan workers
@@ -188,7 +219,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Conan
-        run: python -m pip install --upgrade pip conan zstandard
+        run: python -m pip install "conan==${CONAN_VERSION}" zstandard
 
       - name: Pull prebuilt packages
         id: master
@@ -203,6 +234,8 @@ jobs:
           LINUX_ARM64_MUSL: ${{ inputs.linux_arm64_musl }}
           MACOS_X64: ${{ inputs.macos_x64 }}
           MACOS_ARM64: ${{ inputs.macos_arm64 }}
+          GLIBC_FLOOR: ${{ inputs.glibc_floor }}
+          CONAN_OPTIONS: ${{ inputs.conan_options }}
         run: |
           python forge/scripts/master_pull.py \
             --name "${{ inputs.name }}" \
@@ -249,16 +282,14 @@ jobs:
           python-version: "3.12"
 
       - name: Install Conan
-        run: python -m pip install --upgrade pip conan zstandard
+        if: ${{ matrix.container == '' }}
+        run: python -m pip install "conan==${CONAN_VERSION}" zstandard
 
       - name: Install managed MinGW-w64 GCC
         if: ${{ matrix.mingw == true }}
         run: >
           python forge/scripts/install_soldr_mingw.py
           --target-dir "${{ runner.temp }}/soldr-mingw"
-
-      - name: Detect Conan profile
-        run: conan profile detect --force
 
       - name: Install musl tools
         if: ${{ matrix.libc == 'musl' }}
@@ -267,81 +298,72 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools
 
-      - name: Export recipe
-        run: >
-          conan export "recipe/${{ inputs.recipe_path }}"
-          --name "${{ inputs.name }}"
-          --version "${{ inputs.version }}"
-
-      - name: Pull prebuilt package
-        id: pull
+      - name: Pull or build package
+        if: ${{ matrix.container == '' }}
         shell: bash
-        run: |
-          extra_args=()
-          if [[ "${{ matrix.libc }}" == "musl" ]]; then
-            extra_args+=("-c" "tools.build:compiler_executables={'c':'musl-gcc'}")
-            extra_args+=("-c" "tools.gnu:host_triplet=${{ matrix.host_triplet }}")
-          fi
-          if [[ "${{ matrix.mingw }}" == "true" ]]; then
-            extra_args+=("-c" "tools.build:compiler_executables={'c':'gcc','cpp':'g++'}")
-            # GCC 14/15 promote these legacy C diagnostics to hard errors by
-            # default, breaking pre-C23 autotools deps (e.g. libx264's
-            # _beginthreadex implicit declaration). Relax them to warnings.
-            extra_args+=("-c" "tools.build:cflags=['-Wno-error=implicit-function-declaration','-Wno-error=implicit-int','-Wno-error=incompatible-pointer-types','-Wno-error=int-conversion']")
-            # Statically link the MinGW runtime so produced executables are
-            # self-contained (no libgcc_s / libstdc++-6 / libwinpthread-1 DLL
-            # dependencies on end-user machines).
-            extra_args+=("-c" "tools.build:exelinkflags=['-static','-static-libgcc','-static-libstdc++']")
-          fi
+        env:
+          FORGE_NAME: ${{ inputs.name }}
+          FORGE_VERSION: ${{ inputs.version }}
+          FORGE_RECIPE_PATH: recipe/${{ inputs.recipe_path }}
+          FORGE_BUILD_TYPE: ${{ inputs.build_type }}
+          FORGE_CONAN_OS: ${{ matrix.conan_os }}
+          FORGE_CONAN_ARCH: ${{ matrix.conan_arch }}
+          FORGE_LIBC: ${{ matrix.libc }}
+          FORGE_HOST_TRIPLET: ${{ matrix.host_triplet }}
+          FORGE_MINGW: ${{ matrix.mingw }}
+          FORGE_CONAN_OPTIONS: ${{ inputs.conan_options }}
+        run: bash forge/scripts/conan_build.sh
 
-          if conan install \
-            --requires "${{ inputs.name }}/${{ inputs.version }}" \
-            -s os="${{ matrix.conan_os }}" \
-            -s arch="${{ matrix.conan_arch }}" \
-            -s build_type="${{ inputs.build_type }}" \
-            --build=never \
-            "${extra_args[@]}"; then
-            echo "package_ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "package_ready=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build package
-        if: ${{ steps.pull.outputs.package_ready != 'true' }}
+      # Linux -gnu lanes pull or build inside the digest-pinned manylinux
+      # image for the selected glibc floor, so the package links against that
+      # image's glibc, not the runner's 2.39. Only Conan runs in the container:
+      # checkout and upload-artifact stay on the host because their Node 20
+      # runtime cannot start under glibc 2.17.
+      - name: Pull or build package (glibc ${{ matrix.glibc_floor }} container)
+        if: ${{ matrix.container != '' }}
         shell: bash
+        env:
+          FORGE_NAME: ${{ inputs.name }}
+          FORGE_VERSION: ${{ inputs.version }}
+          FORGE_RECIPE_PATH: recipe/${{ inputs.recipe_path }}
+          FORGE_BUILD_TYPE: ${{ inputs.build_type }}
+          FORGE_CONAN_OS: ${{ matrix.conan_os }}
+          FORGE_CONAN_ARCH: ${{ matrix.conan_arch }}
+          FORGE_LIBC: ${{ matrix.libc }}
+          FORGE_CONAN_OPTIONS: ${{ inputs.conan_options }}
         run: |
-          extra_args=()
-          if [[ "${{ matrix.libc }}" == "musl" ]]; then
-            extra_args+=("-c" "tools.build:compiler_executables={'c':'musl-gcc'}")
-            extra_args+=("-c" "tools.gnu:host_triplet=${{ matrix.host_triplet }}")
-          fi
-          if [[ "${{ matrix.mingw }}" == "true" ]]; then
-            extra_args+=("-c" "tools.build:compiler_executables={'c':'gcc','cpp':'g++'}")
-            # GCC 14/15 promote these legacy C diagnostics to hard errors by
-            # default, breaking pre-C23 autotools deps (e.g. libx264's
-            # _beginthreadex implicit declaration). Relax them to warnings.
-            extra_args+=("-c" "tools.build:cflags=['-Wno-error=implicit-function-declaration','-Wno-error=implicit-int','-Wno-error=incompatible-pointer-types','-Wno-error=int-conversion']")
-            # Statically link the MinGW runtime so produced executables are
-            # self-contained (no libgcc_s / libstdc++-6 / libwinpthread-1 DLL
-            # dependencies on end-user machines).
-            extra_args+=("-c" "tools.build:exelinkflags=['-static','-static-libgcc','-static-libstdc++']")
-          fi
+          set -euo pipefail
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            -w /work \
+            -e CONAN_HOME=/work/.conan-home \
+            -e CONAN_VERSION \
+            -e FORGE_NAME -e FORGE_VERSION -e FORGE_RECIPE_PATH -e FORGE_BUILD_TYPE \
+            -e FORGE_CONAN_OS -e FORGE_CONAN_ARCH -e FORGE_LIBC -e FORGE_CONAN_OPTIONS \
+            -e FORGE_IN_CONTAINER=true \
+            -e PYTHON=/opt/python/cp312-cp312/bin/python \
+            "${{ matrix.container }}" \
+            bash -euo pipefail -c '
+              ldd --version
+              # The OpenSSL Configure script (a common transitive dependency) needs
+              # Perl modules the manylinux images do not ship.
+              yum install -y -q perl-core
+              "$PYTHON" -m pip install --root-user-action=ignore "conan==${CONAN_VERSION}" zstandard
+              export PATH="/opt/python/cp312-cp312/bin:$PATH"
+              conan --version
+              bash forge/scripts/conan_build.sh
+            '
+          sudo chown -R "$(id -u):$(id -g)" forge-output
 
-          conan create "recipe/${{ inputs.recipe_path }}" \
-            --name "${{ inputs.name }}" \
-            --version "${{ inputs.version }}" \
-            -s os="${{ matrix.conan_os }}" \
-            -s arch="${{ matrix.conan_arch }}" \
-            -s build_type="${{ inputs.build_type }}" \
-            --build=missing \
-            "${extra_args[@]}"
-
-      - name: Export package folder
+      # Measure, never assert: the highest GLIBC_* version any ELF file in the
+      # package imports must not exceed the lane's floor.
+      - name: Measure glibc floor
+        if: ${{ matrix.libc == 'glibc' }}
+        shell: bash
         run: >
-          python forge/scripts/export_conan_package.py
-          --name "${{ inputs.name }}"
-          --version "${{ inputs.version }}"
-          --output forge-output/package
+          python forge/scripts/glibc_floor.py forge-output/package
+          --max "${{ matrix.glibc_floor }}"
+          --output forge-output/glibc-floor.txt
 
       - name: Validate package payload
         shell: bash
