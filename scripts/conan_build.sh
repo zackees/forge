@@ -33,6 +33,10 @@ if [[ "${FORGE_MINGW:-}" == "true" ]]; then
   extra_args+=("-c" "tools.build:exelinkflags=['-static','-static-libgcc','-static-libstdc++']")
 fi
 if [[ "${FORGE_IN_CONTAINER:-}" == "true" ]]; then
+  # Conan Center binaries are built against a newer glibc than the floor
+  # image (its m4 needs GLIBC_2.34 and cannot even run under 2.28), so take
+  # only recipes from it and build every dependency inside the container.
+  conan remote update conancenter --recipes-only
   # The container is root and disposable: let recipes that need system
   # packages (xorg/system, opengl/system, ...) install them with yum/dnf.
   extra_args+=("-c" "tools.system.package_manager:mode=install")
