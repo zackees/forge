@@ -345,6 +345,9 @@ jobs:
             "${{ matrix.container }}" \
             bash -euo pipefail -c '
               ldd --version
+              # OpenSSL's Configure (a common transitive dependency) needs
+              # Perl modules the manylinux images do not ship.
+              yum install -y -q perl-IPC-Cmd perl-Time-Piece
               "$PYTHON" -m pip install --root-user-action=ignore "conan==${CONAN_VERSION}" zstandard
               export PATH="/opt/python/cp312-cp312/bin:$PATH"
               conan --version
