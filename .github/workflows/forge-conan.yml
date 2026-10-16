@@ -347,7 +347,7 @@ jobs:
               ldd --version
               # The OpenSSL Configure script (a common transitive dependency) needs
               # Perl modules the manylinux images do not ship.
-              yum install -y -q perl-IPC-Cmd perl-Time-Piece
+              yum install -y -q perl-core
               "$PYTHON" -m pip install --root-user-action=ignore "conan==${CONAN_VERSION}" zstandard
               export PATH="/opt/python/cp312-cp312/bin:$PATH"
               conan --version
