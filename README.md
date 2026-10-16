@@ -70,7 +70,10 @@ is installed into the image's CPython 3.12, and `scripts/conan_build.sh` pulls
 or builds the package there. Checkout and `upload-artifact` stay on the host,
 for the same Node 20 reason as above. The master job no longer pulls Linux
 `-gnu` binaries on the host: those lanes always go to a containerised worker,
-so a cached or remote binary is measured like a fresh build.
+so a cached or remote binary is measured like a fresh build. Inside the
+container `conancenter` is used for recipes only (`--recipes-only`): its
+binaries are built against a newer glibc (its `m4` needs `GLIBC_2.34`), so
+every dependency, build tools included, is built from source in the image.
 
 After the build, `scripts/glibc_floor.py` runs `readelf -V` on **every ELF
 file** in the package folder, prints each file's floor, records the package
