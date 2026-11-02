@@ -12,6 +12,23 @@ import tarfile
 from pathlib import Path
 
 
+# Linux -gnu lanes build inside a digest-pinned manylinux container so the
+# package links against that image's glibc, not the runner's (README: "Linux
+# glibc floor: 2.17, always"). 2.17 is the default and the rule; 2.28 is the
+# documented exception for upstreams that cannot build against 2.17 (Qt 6).
+DEFAULT_GLIBC_FLOOR = "2.17"
+LINUX_CONTAINERS = {
+    "2.17": {
+        "x86_64": "quay.io/pypa/manylinux2014_x86_64@sha256:f6a6f153c9cf45470507ebbc27013e5db14ce21331b62fd2c540561f25e5f0a5",
+        "armv8": "quay.io/pypa/manylinux2014_aarch64@sha256:c10b5d2ce68a4426011b5b9b8492f01037b9d0fd2187ed1956b346aa42faeb17",
+    },
+    "2.28": {
+        "x86_64": "quay.io/pypa/manylinux_2_28_x86_64@sha256:4131ddd7acb9c6c966af02fe7e71edc51e078c2d41f475966697676430bfa2ae",
+        "armv8": "quay.io/pypa/manylinux_2_28_aarch64@sha256:abd1230aa9e4058a74b89d27cd14ba18c0db036d7bfe6e6f219a29ea63c24eb6",
+    },
+}
+
+
 PLATFORMS = [
     ("WINDOWS_X64", {
         "platform": "windows-x64",
@@ -81,6 +98,27 @@ def enabled(name: str) -> bool:
     return os.environ.get(name, "").lower() == "true"
 
 
+def glibc_floor(value: str | None) -> str:
+    floor = (value or "").strip() or DEFAULT_GLIBC_FLOOR
+    if floor not in LINUX_CONTAINERS:
+        raise SystemExit(
+            f"glibc_floor must be one of {sorted(LINUX_CONTAINERS)}, got {floor!r}"
+        )
+    return floor
+
+
+def worker_row(config: dict, floor: str) -> dict:
+    """Matrix row for a worker; every row carries container and glibc_floor."""
+    row = dict(config)
+    if row.get("libc") == "glibc":
+        row["container"] = LINUX_CONTAINERS[floor][row["conan_arch"]]
+        row["glibc_floor"] = floor
+    else:
+        row["container"] = ""
+        row["glibc_floor"] = ""
+    return row
+
+
 def run(args: list[str], *, env: dict[str, str], check: bool = True) -> subprocess.CompletedProcess[str]:
     print("+ " + " ".join(args), flush=True)
     return subprocess.run(args, check=check, text=True, env=env)
@@ -109,7 +147,15 @@ def main() -> None:
     parser.add_argument("--version", required=True)
     parser.add_argument("--recipe-path", required=True)
     parser.add_argument("--build-type", required=True)
+    parser.add_argument("--glibc-floor", default=os.environ.get("GLIBC_FLOOR"))
+    parser.add_argument(
+        "--options",
+        default=os.environ.get("CONAN_OPTIONS", ""),
+        help="whitespace-separated Conan options, each passed as -o",
+    )
     args = parser.parse_args()
+    floor = glibc_floor(args.glibc_floor)
+    option_args = [arg for opt in args.options.split() for arg in ("-o", opt)]
 
     enabled_platforms = [config for env_name, config in PLATFORMS if enabled(env_name)]
     if not enabled_platforms:
@@ -124,6 +170,13 @@ def main() -> None:
         platform = config["platform"]
         if config.get("libc") == "musl":
             print(f"{platform}: musl targets are delegated to native workers")
+            missing.append(config)
+            continue
+        if config.get("libc") == "glibc":
+            # A cached or remote binary was built against an unknown glibc;
+            # the worker pulls or builds inside the floor container and
+            # measures the result.
+            print(f"{platform}: glibc targets are delegated to containerised workers")
             missing.append(config)
             continue
 
@@ -154,6 +207,7 @@ def main() -> None:
             "-s",
             f"build_type={args.build_type}",
             "--build=never",
+            *option_args,
         ], env=env, check=False)
 
         if install.returncode != 0:
@@ -177,7 +231,7 @@ def main() -> None:
         tar_directory(package_output.parent, archive_path)
         print(f"{platform}: uploaded from prebuilt package cache")
 
-    matrix = {"include": missing}
+    matrix = {"include": [worker_row(config, floor) for config in missing]}
     write_output("matrix", json.dumps(matrix, separators=(",", ":")))
     write_output("has_builds", "true" if missing else "false")
 
