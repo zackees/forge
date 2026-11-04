@@ -66,7 +66,7 @@ bare `ubuntu-24.04` runner and therefore link against glibc 2.39.
 inside a digest-pinned manylinux container (`scripts/master_pull.py`,
 `LINUX_CONTAINERS`; the master job puts the image in each worker's
 `container` matrix field). Conan (pinned by `CONAN_VERSION` in the workflow)
-is installed into the image's CPython 3.12, and `scripts/conan_build.sh` pulls
+is installed into the image's CPython 3.12, and `scripts/conan_build.py` pulls
 or builds the package there. Checkout and `upload-artifact` stay on the host,
 for the same Node 20 reason as above. The master job no longer pulls Linux
 `-gnu` binaries on the host: those lanes always go to a containerised worker,
@@ -217,3 +217,26 @@ the rest of the build.
 The musl targets install `musl-tools` and pass a musl host triplet to Conan.
 Conan does not expose musl as a default package-ID setting, so recipes that need
 full musl behavior should make their toolchain support explicit.
+
+### Producer recipe selection and validation
+
+Conan installation uses Actions `${{ env.CONAN_VERSION }}` interpolation so
+the same pin reaches PowerShell, Bash, and the Linux container.
+
+Generic recipes use the requested `name` and `recipe_path` on every lane.
+For platform-suffixed names (`-darwin-x64`, `-linux-x64-gnu`, etc.), the
+planner selects the same-named sibling directory for each enabled target.
+For example, `recipes/libuuid-darwin-x64` becomes
+`recipes/libuuid-linux-x64-gnu` on linux-x64 and
+`recipes/libuuid-darwin-arm64` on macos-arm64. Every selected sibling must
+contain `conanfile.py`; missing variants fail planning before any builds.
+Forge never exports a Darwin recipe under a Linux name or bypasses validation.
+The soldr-toolchain libuuid recipe family has no Windows variant, so it cannot
+satisfy a dispatch requesting Windows.
+
+`Forge Conan package` runs only through `workflow_call` or `workflow_dispatch`,
+not on push or pull requests. To exercise changes on a PR, dispatch it with
+that branch as `--ref`, a compatible recipe (for example `examples/python-abi310`, version `3.10.11`),
+and all desired platform booleans explicitly set. Separate dispatch events
+create separate runs; the two reported November 4 failures were separate
+dispatches for the x64 and arm64 Darwin libuuid recipes.

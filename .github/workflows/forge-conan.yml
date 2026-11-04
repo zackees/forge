@@ -187,6 +187,7 @@ permissions:
   contents: read
 
 env:
+  # Actions interpolation is shell-independent (including Windows PowerShell).
   # Conan is pinned so host and container lanes resolve recipes identically.
   CONAN_VERSION: "2.33.0"
 
@@ -219,7 +220,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Conan
-        run: python -m pip install "conan==${CONAN_VERSION}" zstandard
+        run: python -m pip install "conan==${{ env.CONAN_VERSION }}" zstandard
 
       - name: Pull prebuilt packages
         id: master
@@ -283,7 +284,7 @@ jobs:
 
       - name: Install Conan
         if: ${{ matrix.container == '' }}
-        run: python -m pip install "conan==${CONAN_VERSION}" zstandard
+        run: python -m pip install "conan==${{ env.CONAN_VERSION }}" zstandard
 
       - name: Install managed MinGW-w64 GCC
         if: ${{ matrix.mingw == true }}
@@ -302,9 +303,9 @@ jobs:
         if: ${{ matrix.container == '' }}
         shell: bash
         env:
-          FORGE_NAME: ${{ inputs.name }}
+          FORGE_NAME: ${{ matrix.recipe_name }}
           FORGE_VERSION: ${{ inputs.version }}
-          FORGE_RECIPE_PATH: recipe/${{ inputs.recipe_path }}
+          FORGE_RECIPE_PATH: ${{ matrix.recipe_path }}
           FORGE_BUILD_TYPE: ${{ inputs.build_type }}
           FORGE_CONAN_OS: ${{ matrix.conan_os }}
           FORGE_CONAN_ARCH: ${{ matrix.conan_arch }}
@@ -323,9 +324,9 @@ jobs:
         if: ${{ matrix.container != '' }}
         shell: bash
         env:
-          FORGE_NAME: ${{ inputs.name }}
+          FORGE_NAME: ${{ matrix.recipe_name }}
           FORGE_VERSION: ${{ inputs.version }}
-          FORGE_RECIPE_PATH: recipe/${{ inputs.recipe_path }}
+          FORGE_RECIPE_PATH: ${{ matrix.recipe_path }}
           FORGE_BUILD_TYPE: ${{ inputs.build_type }}
           FORGE_CONAN_OS: ${{ matrix.conan_os }}
           FORGE_CONAN_ARCH: ${{ matrix.conan_arch }}
@@ -348,7 +349,7 @@ jobs:
               # The OpenSSL Configure script (a common transitive dependency) needs
               # Perl modules the manylinux images do not ship.
               yum install -y -q perl-core
-              "$PYTHON" -m pip install --root-user-action=ignore "conan==${CONAN_VERSION}" zstandard
+              "$PYTHON" -m pip install --root-user-action=ignore "conan==${{ env.CONAN_VERSION }}" zstandard
               export PATH="/opt/python/cp312-cp312/bin:$PATH"
               conan --version
               "${PYTHON}" forge/scripts/conan_build.py
@@ -396,11 +397,11 @@ jobs:
         shell: bash
         run: |
           tar -cf - -C forge-output . \
-            | gzip -9 > "forge-${{ inputs.name }}-${{ inputs.version }}-${{ matrix.platform }}.tar.gz"
+            | gzip -9 > "forge-${{ matrix.recipe_name }}-${{ inputs.version }}-${{ matrix.platform }}.tar.gz"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: forge-${{ inputs.name }}-${{ inputs.version }}-${{ matrix.platform }}
-          path: forge-${{ inputs.name }}-${{ inputs.version }}-${{ matrix.platform }}.tar.gz
+          name: forge-${{ matrix.recipe_name }}-${{ inputs.version }}-${{ matrix.platform }}
+          path: forge-${{ matrix.recipe_name }}-${{ inputs.version }}-${{ matrix.platform }}.tar.gz
           if-no-files-found: error
