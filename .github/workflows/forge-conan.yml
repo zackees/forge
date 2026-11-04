@@ -312,7 +312,7 @@ jobs:
           FORGE_HOST_TRIPLET: ${{ matrix.host_triplet }}
           FORGE_MINGW: ${{ matrix.mingw }}
           FORGE_CONAN_OPTIONS: ${{ inputs.conan_options }}
-        run: bash forge/scripts/conan_build.sh
+        run: '${PYTHON:-python3}' forge/scripts/conan_build.py
 
       # Linux -gnu lanes pull or build inside the digest-pinned manylinux
       # image for the selected glibc floor, so the package links against that
@@ -351,7 +351,7 @@ jobs:
               "$PYTHON" -m pip install --root-user-action=ignore "conan==${CONAN_VERSION}" zstandard
               export PATH="/opt/python/cp312-cp312/bin:$PATH"
               conan --version
-              bash forge/scripts/conan_build.sh
+              "${PYTHON}" forge/scripts/conan_build.py
             '
           sudo chown -R "$(id -u):$(id -g)" forge-output
 
