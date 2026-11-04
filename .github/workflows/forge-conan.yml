@@ -312,7 +312,7 @@ jobs:
           FORGE_HOST_TRIPLET: ${{ matrix.host_triplet }}
           FORGE_MINGW: ${{ matrix.mingw }}
           FORGE_CONAN_OPTIONS: ${{ inputs.conan_options }}
-        run: '${PYTHON:-python3}' forge/scripts/conan_build.py
+        run: '"${PYTHON:-python3}" forge/scripts/conan_build.py'
 
       # Linux -gnu lanes pull or build inside the digest-pinned manylinux
       # image for the selected glibc floor, so the package links against that

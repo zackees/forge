@@ -24,7 +24,7 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Install checkers
-        run: pip install --quiet "basedpyright==1.38.1" pytest
+        run: pip install --quiet "basedpyright==1.38.1" pytest pyyaml
 
       # The build path is typed Python on purpose: a shell array expansion
       # under `set -u` breaks on the macOS runners' bash 3.2 and no test in
