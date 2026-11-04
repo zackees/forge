@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -119,6 +120,29 @@ def worker_row(config: dict, floor: str) -> dict:
     return row
 
 
+def select_recipe(name: str, recipe_path: str, config: dict) -> dict:
+    """Route platform-suffixed recipes to a real sibling, never relabel one."""
+    suffix = re.search(r"-(darwin|linux|windows)-(x64|arm64)(-gnu|-musl)?$", name)
+    if suffix is None:
+        return {"recipe_name": name, "recipe_path": recipe_path}
+    os_name = {"Macos": "darwin", "Linux": "linux", "Windows": "windows"}[config["conan_os"]]
+    arch = {"x86_64": "x64", "armv8": "arm64"}[config["conan_arch"]]
+    abi = ""
+    if os_name == "linux":
+        abi = "-musl" if config.get("libc") == "musl" else "-gnu"
+    elif config.get("mingw"):
+        abi = "-gnu"
+    selected = f"{name[:suffix.start()]}-{os_name}-{arch}{abi}"
+    path = Path(recipe_path)
+    if path.name != name:
+        raise SystemExit(f"Platform recipe {name!r} requires a same-named recipe directory: {path}")
+    path = path.with_name(selected)
+    if not (path / "conanfile.py").is_file():
+        raise SystemExit(f"{config['platform']}: missing platform recipe {path}/conanfile.py; "
+                         "provide the matching recipe variant for this enabled lane")
+    return {"recipe_name": selected, "recipe_path": str(path)}
+
+
 def run(args: list[str], *, env: dict[str, str], check: bool = True) -> subprocess.CompletedProcess[str]:
     print("+ " + " ".join(args), flush=True)
     return subprocess.run(args, check=check, text=True, env=env)
@@ -161,6 +185,12 @@ def main() -> None:
     if not enabled_platforms:
         raise SystemExit("At least one platform must be enabled")
 
+    # Resolve all lanes before invoking Conan, including delegated Linux lanes.
+    enabled_platforms = [
+        {**config, **select_recipe(args.name, args.recipe_path, config)}
+        for config in enabled_platforms
+    ]
+
     missing = []
     artifact_root = Path("forge-prebuilt")
     shutil.rmtree(artifact_root, ignore_errors=True)
@@ -188,9 +218,9 @@ def main() -> None:
         run([
             "conan",
             "export",
-            args.recipe_path,
+            config["recipe_path"],
             "--name",
-            args.name,
+            config["recipe_name"],
             "--version",
             args.version,
         ], env=env)
@@ -199,7 +229,7 @@ def main() -> None:
             "conan",
             "install",
             "--requires",
-            f"{args.name}/{args.version}",
+            f"{config['recipe_name']}/{args.version}",
             "-s",
             f"os={config['conan_os']}",
             "-s",
@@ -220,14 +250,14 @@ def main() -> None:
             "python",
             "forge/scripts/export_conan_package.py",
             "--name",
-            args.name,
+            config["recipe_name"],
             "--version",
             args.version,
             "--output",
             str(package_output),
         ], env=env)
 
-        archive_path = artifact_root / f"forge-{args.name}-{args.version}-{platform}.tar.gz"
+        archive_path = artifact_root / f"forge-{config['recipe_name']}-{args.version}-{platform}.tar.gz"
         tar_directory(package_output.parent, archive_path)
         print(f"{platform}: uploaded from prebuilt package cache")
 
