@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python (${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install checkers
+        run: pip install --quiet "basedpyright==1.38.1" pytest
+
+      # The build path is typed Python on purpose: a shell array expansion
+      # under `set -u` breaks on the macOS runners' bash 3.2 and no test in
+      # this repository can see that (forge runs 41853818603 / 41853869396).
+      # basedpyright is the gate that keeps those values typed.
+      - name: basedpyright
+        run: basedpyright scripts/
+
+      - name: pytest
+        run: python -m pytest -q tests/
